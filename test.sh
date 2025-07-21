@@ -40,14 +40,16 @@ server()
 
 tc_client()
 {
-	local ns="${NS}_cpe" iface="int"
+	local ns="${NS}_cpe" iface="int" port_start="5201" port_end="5203"
 
 	# ip netns will umount everything on exit
 	ip netns exec "${ns}" sh -c "mount -t debugfs none /sys/kernel/debug && cat /sys/kernel/debug/tracing/trace_pipe" &
 
 	tc -n "${ns}" qdisc add dev "${iface}" clsact
-	tc -n "${ns}" filter add dev "${iface}" egress  bpf obj tcp_in_udp_tc.o sec tc_client_egress action csum udp index 100
-	tc -n "${ns}" filter add dev "${iface}" ingress bpf da obj tcp_in_udp_tc.o sec tc_client_ingress
+	tc -n "${ns}" filter add dev "${iface}" egress  protocol ip flower ip_proto tcp dst_port "${port_start}"-"${port_end}" action goto chain 1
+	tc -n "${ns}" filter add dev "${iface}" egress  chain 1 bpf object-file tcp_in_udp_tc.o section tc action csum udp
+	tc -n "${ns}" filter add dev "${iface}" ingress protocol ip flower ip_proto udp src_port "${port_start}"-"${port_end}" action goto chain 1
+	tc -n "${ns}" filter add dev "${iface}" ingress chain 1 bpf object-file tcp_in_udp_tc.o section tc direct-action
 
 	tc -n "${ns}" filter show dev "${iface}" egress
 	tc -n "${ns}" filter show dev "${iface}" ingress
@@ -59,14 +61,16 @@ tc_client()
 
 tc_server()
 {
-	local ns="${NS}_net" iface="int"
+	local ns="${NS}_net" iface="int" port_start="5201" port_end="5203"
 
 	# ip netns will umount everything on exit
 	ip netns exec "${ns}" sh -c "mount -t debugfs none /sys/kernel/debug && cat /sys/kernel/debug/tracing/trace_pipe" &
 
 	tc -n "${ns}" qdisc add dev "${iface}" clsact
-	tc -n "${ns}" filter add dev "${iface}" egress  bpf obj tcp_in_udp_tc.o sec tc_server_egress action csum udp index 100
-	tc -n "${ns}" filter add dev "${iface}" ingress bpf da obj tcp_in_udp_tc.o sec tc_server_ingress
+	tc -n "${ns}" filter add dev "${iface}" egress  protocol ip flower ip_proto tcp src_port "${port_start}"-"${port_end}" action goto chain 1
+	tc -n "${ns}" filter add dev "${iface}" egress  chain 1 bpf object-file tcp_in_udp_tc.o section tc action csum udp
+	tc -n "${ns}" filter add dev "${iface}" ingress protocol ip flower ip_proto udp dst_port "${port_start}"-"${port_end}" action goto chain 1
+	tc -n "${ns}" filter add dev "${iface}" ingress chain 1 bpf object-file tcp_in_udp_tc.o section tc direct-action
 
 	tc -n "${ns}" filter show dev "${iface}" egress
 	tc -n "${ns}" filter show dev "${iface}" ingress
